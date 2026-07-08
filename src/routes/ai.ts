@@ -440,6 +440,71 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // POST /projects/:id/profiling/ai-suggest — keyword strategy + content topics from profiling brief
+  app.post<{ Params: { id: string } }>('/:id/profiling/ai-suggest', auth, async (request, reply) => {
+    const [project, user] = await Promise.all([
+      app.prisma.project.findUnique({
+        where: { id: request.params.id },
+        include: { profiling: { include: { personas: true, competitors: true } } },
+      }),
+      app.prisma.user.findUnique({ where: { id: request.user.sub }, select: { name: true } }),
+    ]);
+    if (!project) return reply.code(404).send({ error: 'Project not found' });
+
+    const p = project.profiling;
+    const competitorNames = (p?.competitors ?? []).map((c: { name: string }) => c.name).join(', ');
+    const personaSummary = (p?.personas ?? []).map((pe: { name: string; role?: string | null }) => `${pe.name}${pe.role ? ` (${pe.role})` : ''}`).join(', ');
+
+    const context = [
+      `Client: ${p?.companyName ?? project.clientName}`,
+      p?.industry && `Industry: ${p.industry}`,
+      p?.about && `About: ${p.about}`,
+      p?.objectives && `Business objectives: ${p.objectives}`,
+      p?.brandVoice && `Brand voice: ${p.brandVoice}`,
+      p?.tagline && `Tagline: ${p.tagline}`,
+      p?.localSeo && `Local SEO focus: ${p.localSeo}`,
+      p?.existingDomain && `Existing domain: ${p.existingDomain}`,
+      p?.seoNotes && `SEO notes: ${p.seoNotes}`,
+      competitorNames && `Competitors: ${competitorNames}`,
+      personaSummary && `Target personas: ${personaSummary}`,
+    ].filter(Boolean).join('\n');
+
+    try {
+      const result = await chatJSON<{
+        keywords: { primary: string[]; secondary: string[]; longTail: string[] };
+        contentTopics: { title: string; angle: string }[];
+      }>(app, {
+        operation: 'profiling.ai-suggest',
+        projectId: request.params.id,
+        userName: user?.name,
+        system:
+          `You are a senior SEO strategist and content director at a digital agency. Based on the client brief, ` +
+          `produce actionable keyword and content recommendations. Respond with a single JSON object: ` +
+          `{"keywords": {"primary": string[], "secondary": string[], "longTail": string[]}, "contentTopics": {"title": string, "angle": string}[]}. ` +
+          `keywords.primary: 5-8 high-intent head terms (e.g. "brand design agency london"). ` +
+          `keywords.secondary: 6-10 supporting mid-tail terms. ` +
+          `keywords.longTail: 5-8 specific long-tail queries the target audience would search. ` +
+          `contentTopics: 5-7 page/blog ideas, each with a short "title" and one-sentence "angle" explaining why it converts. ` +
+          `Base every suggestion strictly on the provided context — no generic filler.`,
+        user: `Client context:\n${context}`,
+      });
+      return {
+        keywords: {
+          primary: Array.isArray(result.keywords?.primary) ? result.keywords.primary.map(String) : [],
+          secondary: Array.isArray(result.keywords?.secondary) ? result.keywords.secondary.map(String) : [],
+          longTail: Array.isArray(result.keywords?.longTail) ? result.keywords.longTail.map(String) : [],
+        },
+        contentTopics: Array.isArray(result.contentTopics)
+          ? result.contentTopics.map((t) => ({ title: String(t.title ?? ''), angle: String(t.angle ?? '') }))
+          : [],
+      };
+    } catch (err) {
+      if (err instanceof AiUnavailableError) return reply.code(503).send({ error: 'AI keyword suggestions are not configured (missing OPENAI_API_KEY).' });
+      if (err instanceof AiRequestError) return reply.code(err.status).send({ error: err.message });
+      throw err;
+    }
+  });
+
   // GET /projects/:id/design/ai-usage — usage tracker (project + workspace totals)
   app.get<{ Params: { id: string } }>('/:id/design/ai-usage', auth, async (request) => {
     const monthStart = new Date();
