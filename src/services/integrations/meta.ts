@@ -105,11 +105,15 @@ export async function handleMetaCallback(app: FastifyInstance, code: string, pro
       errorMessage: null,
       connectedAt: new Date(),
     };
-    await app.prisma.integrationConnection.upsert({
-      where: { projectId_provider: { projectId: (projectId ?? null) as string, provider: 'META' } },
-      update: data,
-      create: { provider: 'META', projectId: projectId ?? null, ...data },
+    const targetProjectId = projectId ?? null;
+    const existing = await app.prisma.integrationConnection.findFirst({
+      where: { projectId: targetProjectId, provider: 'META' },
     });
+    if (existing) {
+      await app.prisma.integrationConnection.update({ where: { id: existing.id }, data });
+    } else {
+      await app.prisma.integrationConnection.create({ data: { provider: 'META', projectId: targetProjectId, ...data } });
+    }
     return;
   }
 
@@ -179,13 +183,13 @@ export async function handleMetaCallback(app: FastifyInstance, code: string, pro
 export async function getMetaAccessToken(app: FastifyInstance, projectId?: string): Promise<string> {
   let conn = null;
   if (projectId) {
-    conn = await app.prisma.integrationConnection.findUnique({
-      where: { projectId_provider: { projectId, provider: 'META' } }
+    conn = await app.prisma.integrationConnection.findFirst({
+      where: { projectId, provider: 'META' }
     });
   }
   if (!conn || conn.status !== 'CONNECTED' || !conn.accessTokenEnc) {
-    conn = await app.prisma.integrationConnection.findUnique({
-      where: { projectId_provider: { projectId: null as unknown as string, provider: 'META' } }
+    conn = await app.prisma.integrationConnection.findFirst({
+      where: { projectId: null, provider: 'META' }
     });
   }
   if (!conn || conn.status !== 'CONNECTED' || !conn.accessTokenEnc) {
@@ -193,7 +197,7 @@ export async function getMetaAccessToken(app: FastifyInstance, projectId?: strin
   }
   if (conn.tokenExpiresAt && conn.tokenExpiresAt.getTime() <= Date.now()) {
     await app.prisma.integrationConnection.update({
-      where: { projectId_provider: { projectId: (conn.projectId ?? null) as string, provider: 'META' } },
+      where: { id: conn.id },
       data: { status: 'ERROR', errorMessage: 'Long-lived token expired — reconnect Meta.' },
     });
     throw new IntegrationUnavailableError('Meta token expired — reconnect Meta.');

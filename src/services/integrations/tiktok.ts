@@ -91,11 +91,15 @@ export async function handleTiktokCallback(app: FastifyInstance, code: string, p
       errorMessage: null,
       connectedAt: new Date(),
     };
-    await app.prisma.integrationConnection.upsert({
-      where: { projectId_provider: { projectId: (projectId ?? null) as string, provider: 'TIKTOK' } },
-      update: data,
-      create: { provider: 'TIKTOK', projectId: projectId ?? null, ...data },
+    const targetProjectId = projectId ?? null;
+    const existing = await app.prisma.integrationConnection.findFirst({
+      where: { projectId: targetProjectId, provider: 'TIKTOK' },
     });
+    if (existing) {
+      await app.prisma.integrationConnection.update({ where: { id: existing.id }, data });
+    } else {
+      await app.prisma.integrationConnection.create({ data: { provider: 'TIKTOK', projectId: targetProjectId, ...data } });
+    }
     return;
   }
 
@@ -146,13 +150,13 @@ export async function handleTiktokCallback(app: FastifyInstance, code: string, p
 export async function getTiktokAccessToken(app: FastifyInstance, projectId?: string): Promise<string> {
   let conn = null;
   if (projectId) {
-    conn = await app.prisma.integrationConnection.findUnique({
-      where: { projectId_provider: { projectId, provider: 'TIKTOK' } }
+    conn = await app.prisma.integrationConnection.findFirst({
+      where: { projectId, provider: 'TIKTOK' }
     });
   }
   if (!conn || conn.status !== 'CONNECTED' || !conn.accessTokenEnc) {
-    conn = await app.prisma.integrationConnection.findUnique({
-      where: { projectId_provider: { projectId: null as unknown as string, provider: 'TIKTOK' } }
+    conn = await app.prisma.integrationConnection.findFirst({
+      where: { projectId: null, provider: 'TIKTOK' }
     });
   }
   if (!conn || conn.status !== 'CONNECTED' || !conn.accessTokenEnc) {
@@ -183,14 +187,14 @@ export async function getTiktokAccessToken(app: FastifyInstance, projectId?: str
   } catch (err) {
     const message = err instanceof Error ? err.message : 'TikTok token refresh failed.';
     await app.prisma.integrationConnection.update({
-      where: { projectId_provider: { projectId: (conn.projectId ?? null) as string, provider: 'TIKTOK' } },
+      where: { id: conn.id },
       data: { status: 'ERROR', errorMessage: message },
     });
     throw err;
   }
 
   await app.prisma.integrationConnection.update({
-    where: { projectId_provider: { projectId: (conn.projectId ?? null) as string, provider: 'TIKTOK' } },
+    where: { id: conn.id },
     data: {
       accessTokenEnc: encrypt(tokens.access_token),
       refreshTokenEnc: encrypt(tokens.refresh_token),

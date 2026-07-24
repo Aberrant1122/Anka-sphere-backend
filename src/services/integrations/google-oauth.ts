@@ -102,15 +102,18 @@ export async function handleGoogleCallback(app: FastifyInstance, code: string): 
       connectedAt: new Date(),
     };
 
-    await app.prisma.$transaction(
-      GOOGLE_PROVIDERS.map((provider) =>
-        app.prisma.integrationConnection.upsert({
-          where: { projectId_provider: { projectId: null as unknown as string, provider } },
-          update: data,
-          create: { provider, projectId: null, ...data },
-        }),
-      ),
-    );
+    await app.prisma.$transaction(async (tx) => {
+      for (const provider of GOOGLE_PROVIDERS) {
+        const existing = await tx.integrationConnection.findFirst({
+          where: { provider, projectId: null },
+        });
+        if (existing) {
+          await tx.integrationConnection.update({ where: { id: existing.id }, data });
+        } else {
+          await tx.integrationConnection.create({ data: { provider, projectId: null, ...data } });
+        }
+      }
+    });
     return;
   }
 
@@ -150,15 +153,18 @@ export async function handleGoogleCallback(app: FastifyInstance, code: string): 
     connectedAt: new Date(),
   };
 
-  await app.prisma.$transaction(
-    GOOGLE_PROVIDERS.map((provider) =>
-      app.prisma.integrationConnection.upsert({
-        where: { projectId_provider: { projectId: null as unknown as string, provider } },
-        update: data,
-        create: { provider, projectId: null, ...data },
-      }),
-    ),
-  );
+  await app.prisma.$transaction(async (tx) => {
+    for (const provider of GOOGLE_PROVIDERS) {
+      const existing = await tx.integrationConnection.findFirst({
+        where: { provider, projectId: null },
+      });
+      if (existing) {
+        await tx.integrationConnection.update({ where: { id: existing.id }, data });
+      } else {
+        await tx.integrationConnection.create({ data: { provider, projectId: null, ...data } });
+      }
+    }
+  });
 }
 
 /**
@@ -202,8 +208,8 @@ export async function getGoogleAccessToken(app: FastifyInstance, projectId?: str
     }
   }
 
-  const conn = await app.prisma.integrationConnection.findUnique({
-    where: { projectId_provider: { projectId: null as unknown as string, provider: CANONICAL } }
+  const conn = await app.prisma.integrationConnection.findFirst({
+    where: { provider: CANONICAL, projectId: null }
   });
   if (!conn || conn.status !== 'CONNECTED' || !conn.accessTokenEnc) {
     throw new IntegrationUnavailableError('Google is not connected.');
