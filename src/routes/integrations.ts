@@ -39,10 +39,17 @@ const integrationRoutes: FastifyPluginAsync = async (app) => {
 
   // Where the browser lands after an OAuth round-trip (settings → integrations tab)
   const settingsUrl = (result: string, projectId?: string) => {
+    const frontendBase = process.env.FRONTEND_URL
+      ? process.env.FRONTEND_URL.replace(/\/$/, '')
+      : (process.env.RAILWAY_PUBLIC_DOMAIN
+        ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.replace(/\/$/, '')}`
+        : (process.env.NODE_ENV === 'production'
+          ? 'https://anka-sphere-production.up.railway.app'
+          : 'http://localhost:4200'));
     if (projectId) {
-      return `${process.env.FRONTEND_URL ?? 'http://localhost:4200'}/app/projects/${projectId}/analytics?integration=${result}`;
+      return `${frontendBase}/app/projects/${projectId}/analytics?integration=${result}`;
     }
-    return `${process.env.FRONTEND_URL ?? 'http://localhost:4200'}/app/settings?integration=${result}`;
+    return `${frontendBase}/app/settings?integration=${result}`;
   };
 
   // ── Status of all integrations ──────────────────────────────────────────────
