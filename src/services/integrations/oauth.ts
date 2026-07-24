@@ -61,12 +61,25 @@ export function redirectUriFor(provider: OAuthProviderSlug): string {
     const base = process.env.BACKEND_URL.replace(/\/$/, '');
     return `${base}/integrations/${provider}/callback`;
   }
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+    const domain = process.env.RAILWAY_PUBLIC_DOMAIN.replace(/\/$/, '');
+    const proto = domain.includes('localhost') ? 'http' : 'https';
+    return `${proto}://${domain}/integrations/${provider}/callback`;
+  }
+  if (process.env.RAILWAY_STATIC_URL) {
+    const base = process.env.RAILWAY_STATIC_URL.replace(/\/$/, '');
+    return `${base}/integrations/${provider}/callback`;
+  }
   if (process.env.OAUTH_REDIRECT_BASE) {
     const base = process.env.OAUTH_REDIRECT_BASE.replace(/\/$/, '');
     return `${base}/integrations/${provider}/callback`;
   }
-  const base =
-    process.env.GOOGLE_OAUTH_REDIRECT_URI ?? 'http://localhost:3010/integrations/google/callback';
-  return base.replace('/google/', `/${provider}/`);
+  if (process.env.GOOGLE_OAUTH_REDIRECT_URI) {
+    return process.env.GOOGLE_OAUTH_REDIRECT_URI.replace('/google/', `/${provider}/`);
+  }
+  const defaultBase = process.env.NODE_ENV === 'production'
+    ? 'https://anka-sphere-production.up.railway.app'
+    : 'http://localhost:3010';
+  return `${defaultBase}/integrations/${provider}/callback`;
 }
 
