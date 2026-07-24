@@ -175,7 +175,7 @@ export async function getGoogleAccessToken(app: FastifyInstance, projectId?: str
   if (projectId) {
     const proj = await app.prisma.projectGoogleCredentials.findUnique({ where: { projectId } });
     if (proj && proj.status === 'CONNECTED' && proj.accessTokenEnc) {
-      if (proj.tokenExpiresAt && proj.tokenExpiresAt.getTime() > Date.now() + 60_000) {
+      if (!proj.tokenExpiresAt || proj.tokenExpiresAt.getTime() > Date.now() + 60_000) {
         return decrypt(proj.accessTokenEnc);
       }
       if (proj.refreshTokenEnc) {

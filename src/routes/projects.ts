@@ -347,6 +347,7 @@ const projectRoutes: FastifyPluginAsync = async (app) => {
     const credsData: Record<string, any> = {
       status: 'CONNECTED',
       connectedAt: new Date(),
+      tokenExpiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000),
     };
 
     if (clientId) credsData.clientIdEnc = encrypt(clientId);
