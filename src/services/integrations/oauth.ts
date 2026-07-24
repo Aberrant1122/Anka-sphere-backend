@@ -52,12 +52,21 @@ export function verifyOAuthState(state: string, provider: OAuthProviderSlug): { 
 }
 
 /**
- * All providers share one redirect-URI base: GOOGLE_OAUTH_REDIRECT_URI with the
- * provider segment swapped (e.g. .../integrations/meta/callback). Register each
- * resulting URL in the respective developer console.
+ * All providers share one redirect-URI base constructed from BACKEND_URL,
+ * OAUTH_REDIRECT_BASE, or GOOGLE_OAUTH_REDIRECT_URI.
+ * Register each resulting URL (e.g. .../integrations/meta/callback) in the respective developer console.
  */
 export function redirectUriFor(provider: OAuthProviderSlug): string {
+  if (process.env.BACKEND_URL) {
+    const base = process.env.BACKEND_URL.replace(/\/$/, '');
+    return `${base}/integrations/${provider}/callback`;
+  }
+  if (process.env.OAUTH_REDIRECT_BASE) {
+    const base = process.env.OAUTH_REDIRECT_BASE.replace(/\/$/, '');
+    return `${base}/integrations/${provider}/callback`;
+  }
   const base =
     process.env.GOOGLE_OAUTH_REDIRECT_URI ?? 'http://localhost:3010/integrations/google/callback';
   return base.replace('/google/', `/${provider}/`);
 }
+
