@@ -55,26 +55,11 @@ export async function fetchGoogleAdsCampaigns(
 ): Promise<AdAccountSummary> {
   const accessToken = await getGoogleAccessToken(app, projectId);
   if (accessToken === 'mock-access-token') {
-    const campaigns: AdCampaign[] = [
-      { id: '1', name: 'Summer Organic Produce Search', status: 'ENABLED', spend: 320.50, impressions: 12500, clicks: 850, conversions: 42, ctr: 850/12500, cpc: 320.50/850 },
-      { id: '2', name: 'Berlin Grocery Delivery Retargeting', status: 'ENABLED', spend: 180.20, impressions: 8400, clicks: 420, conversions: 28, ctr: 420/8400, cpc: 180.20/420 },
-      { id: '3', name: 'Zero Waste Sustainable Staple Branding', status: 'PAUSED', spend: 50.00, impressions: 3100, clicks: 95, conversions: 3, ctr: 95/3100, cpc: 50.00/95 },
-    ];
-    const totals = campaigns.reduce(
-      (acc, c) => {
-        acc.spend += c.spend;
-        acc.impressions += c.impressions;
-        acc.clicks += c.clicks;
-        acc.conversions += c.conversions;
-        return acc;
-      },
-      { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
-    );
     return {
       accountId: customerId,
       rangeDays,
-      totals,
-      campaigns,
+      totals: { spend: 0, impressions: 0, clicks: 0, conversions: 0 },
+      campaigns: [],
     };
   }
 

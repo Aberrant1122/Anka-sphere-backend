@@ -54,26 +54,15 @@ export async function fetchGscMetrics(
 ): Promise<GscMetrics> {
   const token = await getGoogleAccessToken(app, projectId);
   if (token === 'mock-access-token') {
-    const clicks = Math.floor(Math.random() * 500) + 150;
-    const impressions = clicks * 15;
     return {
       siteUrl,
       rangeDays,
-      clicks,
-      impressions,
-      ctr: clicks / impressions,
-      avgPosition: 4.8,
-      topQueries: [
-        { query: 'organic produce delivery', clicks: Math.floor(clicks * 0.4), impressions: Math.floor(impressions * 0.35), ctr: 0.12, position: 2.1 },
-        { query: 'fresh vegetable box online', clicks: Math.floor(clicks * 0.25), impressions: Math.floor(impressions * 0.2), ctr: 0.1, position: 3.5 },
-        { query: 'zero waste berlin store', clicks: Math.floor(clicks * 0.15), impressions: Math.floor(impressions * 0.12), ctr: 0.08, position: 1.8 },
-        { query: 'misfits market alternative', clicks: Math.floor(clicks * 0.08), impressions: Math.floor(impressions * 0.08), ctr: 0.05, position: 5.2 },
-      ],
-      topPages: [
-        { page: 'https://' + siteUrl + '/', clicks: Math.floor(clicks * 0.6), impressions: Math.floor(impressions * 0.55) },
-        { page: 'https://' + siteUrl + '/about', clicks: Math.floor(clicks * 0.2), impressions: Math.floor(impressions * 0.18) },
-        { page: 'https://' + siteUrl + '/veg-boxes', clicks: Math.floor(clicks * 0.15), impressions: Math.floor(impressions * 0.15) },
-      ],
+      clicks: 0,
+      impressions: 0,
+      ctr: 0,
+      avgPosition: 0,
+      topQueries: [],
+      topPages: [],
     };
   }
 

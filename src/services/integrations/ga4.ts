@@ -67,24 +67,18 @@ export async function fetchGa4Metrics(
   if (token === 'mock-access-token') {
     const sessionsByDay = Array.from({ length: rangeDays }, (_, i) => {
       const date = new Date(Date.now() - (rangeDays - 1 - i) * 86_400_000).toISOString().slice(0, 10);
-      return { date, sessions: Math.floor(Math.random() * 200) + 100 };
+      return { date, sessions: 0 };
     });
-    const sessions = sessionsByDay.reduce((sum, d) => sum + d.sessions, 0);
     return {
       propertyId: rawPropertyId,
       rangeDays,
-      sessions,
-      totalUsers: Math.floor(sessions * 0.8),
-      newUsers: Math.floor(sessions * 0.6),
-      conversions: Math.floor(sessions * 0.05),
-      engagementRate: 0.68,
-      averageSessionDuration: 145,
-      topPages: [
-        { path: '/', sessions: Math.floor(sessions * 0.5), users: Math.floor(sessions * 0.4) },
-        { path: '/about', sessions: Math.floor(sessions * 0.2), users: Math.floor(sessions * 0.15) },
-        { path: '/pricing', sessions: Math.floor(sessions * 0.15), users: Math.floor(sessions * 0.12) },
-        { path: '/blog', sessions: Math.floor(sessions * 0.1), users: Math.floor(sessions * 0.08) },
-      ],
+      sessions: 0,
+      totalUsers: 0,
+      newUsers: 0,
+      conversions: 0,
+      engagementRate: 0,
+      averageSessionDuration: 0,
+      topPages: [],
       sessionsByDay,
     };
   }
