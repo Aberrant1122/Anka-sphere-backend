@@ -183,7 +183,21 @@ model Project {
   wpThemes            WPTheme[]
   reports             Report[]
   emailSettings       ProjectEmailSettings?
-
+  googleCredentials   ProjectGoogleCredentials?
+  socialPosts         SocialPost[]
+  adAccountLinks      AdAccountLink[]
+  metricSnapshots     MetricSnapshot[]
+  emailCampaigns      EmailCampaign[]
+  contentRepurposes   ContentRepurpose[]
+  communityQueueItems CommunityQueueItem[]
+  adCreatives         AdCreative[]
+  conversionEvents    ConversionEvent[]
+  backlinks           Backlink[]
+  keywordRankLogs     KeywordRankLog[]
+  pillars             ContentPillar[]
+  promptTemplates     PromptTemplate[]
+  integrationConnections IntegrationConnection[]
+  socialCredentials   ProjectSocialCredentials?
 
   @@map("projects")
 }
@@ -377,6 +391,7 @@ model DesignAsset {
   updatedAt   DateTime  @updatedAt
 
   design Design @relation(fields: [designId], references: [id], onDelete: Cascade)
+  socialPosts SocialPost[]
 
   @@map("design_assets")
 }
@@ -399,6 +414,9 @@ model ContentPage {
   comments       Comment[]
   devTasks       DevTask[]
   deploymentQueueItems DeploymentQueueItem[]
+  repurposes     ContentRepurpose[]
+  pillarId       String?
+  pillar         ContentPillar? @relation(fields: [pillarId], references: [id], onDelete: SetNull)
 
   @@map("content_pages")
 }
@@ -708,6 +726,174 @@ model ProjectEmailSettings {
 
   @@map("project_email_settings")
 }
+
+model ProjectGoogleCredentials {
+  id                 String            @id @default(cuid())
+  projectId          String            @unique
+  clientIdEnc        String?
+  clientSecretEnc    String?
+  developerTokenEnc  String?
+  accessTokenEnc     String?
+  refreshTokenEnc    String?
+  tokenExpiresAt     DateTime?
+  googleAdsAccountId String?
+  status             IntegrationStatus @default(NOT_CONFIGURED)
+  connectedAt        DateTime?
+  errorMessage       String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_google_credentials")
+}
+
+model ProjectSocialCredentials {
+  id                    String   @id @default(cuid())
+  projectId             String   @unique
+  // Meta
+  metaAppIdEnc          String?
+  metaAppSecretEnc      String?
+  // TikTok
+  tiktokClientKeyEnc    String?
+  tiktokClientSecretEnc String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_social_credentials")
+}
+// ─── External Integrations ───────────────────────────────────────────────────
+
+enum IntegrationProvider {
+  GOOGLE_ANALYTICS
+  GOOGLE_SEARCH_CONSOLE
+  GOOGLE_ADS
+  META
+  TIKTOK
+  STABILITY
+  RUNWAY
+}
+
+enum IntegrationStatus {
+  NOT_CONFIGURED
+  PENDING
+  CONNECTED
+  ERROR
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  TIKTOK
+  FACEBOOK
+  LINKEDIN
+  X
+}
+
+enum SocialPostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
+enum AdNetwork {
+  GOOGLE
+  META
+}
+
+enum MetricSource {
+  GA4
+  GSC
+  GOOGLE_ADS
+  META_ADS
+}
+
+/// Workspace-level connection to an external provider. OAuth tokens are
+/// encrypted at rest via utils/encryption.ts (same scheme as WP passwords).
+model IntegrationConnection {
+  id              String              @id @default(cuid())
+  projectId       String?
+  provider        IntegrationProvider
+  status          IntegrationStatus   @default(NOT_CONFIGURED)
+  accessTokenEnc  String?
+  refreshTokenEnc String?
+  tokenExpiresAt  DateTime?
+  accountId       String?
+  accountName     String?
+  scopes          String?
+  metadata        Json?
+  lastSyncedAt    DateTime?
+  errorMessage    String?
+  connectedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  project         Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, provider])
+  @@map("integration_connections")
+}
+
+model SocialPost {
+  id            String           @id @default(cuid())
+  projectId     String
+  platform      SocialPlatform
+  caption       String
+  hashtags      String?
+  mediaAssetId  String?
+  scheduledAt   DateTime?
+  status        SocialPostStatus @default(DRAFT)
+  externalPostId String?
+  externalUrl   String?
+  errorMessage  String?
+  publishedAt   DateTime?
+  createdByName String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  project    Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mediaAsset DesignAsset? @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status])
+  @@index([status, scheduledAt])
+  @@map("social_posts")
+}
+
+/// Links a project to an external ad account (and optionally specific campaigns).
+model AdAccountLink {
+  id                  String    @id @default(cuid())
+  projectId           String
+  network             AdNetwork
+  externalAccountId   String
+  externalAccountName String?
+  externalCampaignIds Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, network])
+  @@map("ad_account_links")
+}
+
+/// Cached external metrics so dashboards don't hit provider rate limits.
+model MetricSnapshot {
+  id        String       @id @default(cuid())
+  projectId String
+  source    MetricSource
+  period    String
+  data      Json
+  fetchedAt DateTime     @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, source, period])
+  @@map("metric_snapshots")
+}
+
 model ApiUsageEvent {
   id        String   @id @default(cuid())
   provider  String
@@ -721,3 +907,209 @@ model ApiUsageEvent {
 
   @@map("api_usage_events")
 }
+
+// ─── Extended Marketing & SEO Sub-Department Models ──────────────────────────
+
+enum EmailCampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+  ARCHIVED
+}
+
+model EmailCampaign {
+  id              String              @id @default(cuid())
+  projectId       String
+  name            String
+  audienceSegment String?
+  subjectLines    Json?
+  bodyCopy        String?             @db.Text
+  cta             String?
+  sendDate        DateTime?
+  status          EmailCampaignStatus @default(DRAFT)
+  externalId      String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  pillarId  String?
+  pillar    ContentPillar? @relation(fields: [pillarId], references: [id], onDelete: SetNull)
+
+  @@map("email_campaigns")
+}
+
+enum RepurposeFormat {
+  CAROUSEL
+  LINKEDIN_POST
+  EMAIL_SNIPPET
+  TWEET_THREAD
+  VIDEO_SCRIPT
+}
+
+model ContentRepurpose {
+  id           String          @id @default(cuid())
+  projectId    String
+  sourcePageId String?
+  targetFormat RepurposeFormat
+  title        String
+  notes        String?
+  status       String          @default("PLANNED")
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  project    Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourcePage ContentPage? @relation(fields: [sourcePageId], references: [id], onDelete: SetNull)
+
+  @@map("content_repurposes")
+}
+
+enum CommunityQueueStatus {
+  NEEDS_RESPONSE
+  IN_PROGRESS
+  RESPONDED
+  ESCALATED
+}
+
+model CommunityQueueItem {
+  id           String               @id @default(cuid())
+  projectId    String
+  platform     SocialPlatform
+  userHandle   String
+  message      String
+  postTitle    String?
+  assignedTo   String?
+  status       CommunityQueueStatus @default(NEEDS_RESPONSE)
+  responseBody String?
+  respondedAt  DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("community_queue_items")
+}
+
+enum AdCreativeFormat {
+  STATIC_IMAGE
+  VIDEO
+  CAROUSEL
+  TEXT
+}
+
+enum AdCreativeStatus {
+  DRAFT
+  IN_REVIEW
+  ACTIVE
+  PAUSED
+  REJECTED
+}
+
+model AdCreative {
+  id          String           @id @default(cuid())
+  projectId   String
+  title       String
+  format      AdCreativeFormat @default(STATIC_IMAGE)
+  network     AdNetwork        @default(META)
+  mediaUrl    String?
+  headline    String?
+  bodyCopy    String?
+  targetAdSet String?
+  status      AdCreativeStatus @default(DRAFT)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("ad_creatives")
+}
+
+enum EventStatus {
+  FIRING
+  NOT_FIRING
+  UNVERIFIED
+  UNDER_REVIEW
+}
+
+model ConversionEvent {
+  id          String      @id @default(cuid())
+  projectId   String
+  eventName   String
+  platform    String
+  triggerUrl  String?
+  firingRate  Int?        @default(0)
+  status      EventStatus @default(UNVERIFIED)
+  lastFiredAt DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("conversion_events")
+}
+
+enum BacklinkStatus {
+  LIVE
+  LOST
+  PENDING
+  DISAVOWED
+}
+
+model Backlink {
+  id           String         @id @default(cuid())
+  projectId    String
+  sourceDomain String
+  targetPage   String
+  anchorText   String
+  daScore      Int?
+  status       BacklinkStatus @default(PENDING)
+  acquiredAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("backlinks")
+}
+
+model KeywordRankLog {
+  id          String   @id @default(cuid())
+  projectId   String
+  keyword     String
+  position    Int
+  previousPos Int?
+  clusterName String?
+  checkedAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("keyword_rank_logs")
+}
+
+model ContentPillar {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  color     String   @default("#3B82F6")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  pages   ContentPage[]
+  emails  EmailCampaign[]
+
+  @@map("content_pillars")
+}
+
+model PromptTemplate {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  prompt    String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("prompt_templates")
+}
+

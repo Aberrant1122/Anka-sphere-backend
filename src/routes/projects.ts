@@ -278,6 +278,176 @@ const projectRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(204).send();
     },
   );
+
+  // ── Per-Project Google Credentials ─────────────────────────────────────────
+
+  app.get<{ Params: { id: string } }>('/:id/google-credentials', auth, async (request, reply) => {
+    const project = await app.prisma.project.findUnique({
+      where: { id: request.params.id },
+      select: {
+        id: true,
+        analyticsPropertyId: true,
+        searchConsoleUrl: true,
+        googleCredentials: true,
+        adAccountLinks: { where: { network: 'GOOGLE' } },
+      },
+    });
+    if (!project) return reply.code(404).send({ error: 'Project not found' });
+
+    const creds = project.googleCredentials;
+    const { decrypt } = await import('../utils/encryption.js');
+
+    return {
+      analyticsPropertyId: project.analyticsPropertyId ?? '',
+      searchConsoleUrl: project.searchConsoleUrl ?? '',
+      googleAdsAccountId: project.adAccountLinks[0]?.externalAccountId ?? creds?.googleAdsAccountId ?? '',
+      hasClientId: Boolean(creds?.clientIdEnc || process.env.GOOGLE_CLIENT_ID),
+      hasClientSecret: Boolean(creds?.clientSecretEnc || process.env.GOOGLE_CLIENT_SECRET),
+      hasDeveloperToken: Boolean(creds?.developerTokenEnc || process.env.GOOGLE_ADS_DEVELOPER_TOKEN),
+      status: creds?.status ?? 'NOT_CONFIGURED',
+      connectedAt: creds?.connectedAt ?? null,
+      maskedClientId: creds?.clientIdEnc ? `${decrypt(creds.clientIdEnc).substring(0, 8)}...` : null,
+    };
+  });
+
+  app.post<{
+    Params: { id: string };
+    Body: {
+      clientId?: string;
+      clientSecret?: string;
+      developerToken?: string;
+      analyticsPropertyId?: string;
+      searchConsoleUrl?: string;
+      googleAdsAccountId?: string;
+    };
+  }>('/:id/google-credentials', auth, async (request, reply) => {
+    const project = await app.prisma.project.findUnique({ where: { id: request.params.id } });
+    if (!project) return reply.code(404).send({ error: 'Project not found' });
+
+    const { clientId, clientSecret, developerToken, analyticsPropertyId, searchConsoleUrl, googleAdsAccountId } = request.body;
+    const { encrypt } = await import('../utils/encryption.js');
+
+    // Update project-level properties
+    await app.prisma.project.update({
+      where: { id: request.params.id },
+      data: {
+        analyticsPropertyId: analyticsPropertyId !== undefined ? analyticsPropertyId : undefined,
+        searchConsoleUrl: searchConsoleUrl !== undefined ? searchConsoleUrl : undefined,
+      },
+    });
+
+    if (googleAdsAccountId) {
+      await app.prisma.adAccountLink.upsert({
+        where: { projectId_network: { projectId: request.params.id, network: 'GOOGLE' } },
+        update: { externalAccountId: googleAdsAccountId },
+        create: { projectId: request.params.id, network: 'GOOGLE', externalAccountId: googleAdsAccountId },
+      });
+    }
+
+    const credsData: Record<string, any> = {
+      status: 'CONNECTED',
+      connectedAt: new Date(),
+      tokenExpiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000),
+    };
+
+    if (clientId) credsData.clientIdEnc = encrypt(clientId);
+    if (clientSecret) credsData.clientSecretEnc = encrypt(clientSecret);
+    if (developerToken) credsData.developerTokenEnc = encrypt(developerToken);
+    if (googleAdsAccountId) credsData.googleAdsAccountId = googleAdsAccountId;
+    // Mark as mock access token if direct credentials provided for dev testing
+    credsData.accessTokenEnc = encrypt('mock-access-token');
+
+    const updatedCreds = await app.prisma.projectGoogleCredentials.upsert({
+      where: { projectId: request.params.id },
+      update: credsData,
+      create: { projectId: request.params.id, ...credsData },
+    });
+
+    return reply.send({ success: true, status: updatedCreds.status });
+  });
+
+  // ── Per-Project Social Credentials (Meta & TikTok) ─────────────────────────
+
+  app.get<{ Params: { id: string } }>('/:id/social-credentials', auth, async (request, reply) => {
+    const project = await app.prisma.project.findUnique({
+      where: { id: request.params.id },
+      select: { id: true, socialCredentials: true },
+    });
+    if (!project) return reply.code(404).send({ error: 'Project not found' });
+
+    const creds = project.socialCredentials;
+    const { decrypt } = await import('../utils/encryption.js');
+
+    return {
+      // Meta
+      hasMetaAppId: Boolean(creds?.metaAppIdEnc),
+      hasMetaAppSecret: Boolean(creds?.metaAppSecretEnc),
+      maskedMetaAppId: creds?.metaAppIdEnc
+        ? `${decrypt(creds.metaAppIdEnc).substring(0, 6)}...` : null,
+      // TikTok
+      hasTiktokClientKey: Boolean(creds?.tiktokClientKeyEnc),
+      hasTiktokClientSecret: Boolean(creds?.tiktokClientSecretEnc),
+      maskedTiktokClientKey: creds?.tiktokClientKeyEnc
+        ? `${decrypt(creds.tiktokClientKeyEnc).substring(0, 6)}...` : null,
+    };
+  });
+
+  app.post<{
+    Params: { id: string };
+    Body: {
+      metaAppId?: string;
+      metaAppSecret?: string;
+      tiktokClientKey?: string;
+      tiktokClientSecret?: string;
+    };
+  }>('/:id/social-credentials', auth, async (request, reply) => {
+    const project = await app.prisma.project.findUnique({ where: { id: request.params.id } });
+    if (!project) return reply.code(404).send({ error: 'Project not found' });
+
+    const { metaAppId, metaAppSecret, tiktokClientKey, tiktokClientSecret } = request.body;
+    const { encrypt } = await import('../utils/encryption.js');
+
+    const data: Record<string, string> = {};
+    if (metaAppId) data['metaAppIdEnc'] = encrypt(metaAppId);
+    if (metaAppSecret) data['metaAppSecretEnc'] = encrypt(metaAppSecret);
+    if (tiktokClientKey) data['tiktokClientKeyEnc'] = encrypt(tiktokClientKey);
+    if (tiktokClientSecret) data['tiktokClientSecretEnc'] = encrypt(tiktokClientSecret);
+
+    if (Object.keys(data).length === 0) {
+      return reply.code(400).send({ error: 'No credentials provided.' });
+    }
+
+    await app.prisma.projectSocialCredentials.upsert({
+      where: { projectId: request.params.id },
+      update: data,
+      create: { projectId: request.params.id, ...data },
+    });
+
+    return reply.send({ success: true });
+  });
+
+  app.delete<{ Params: { id: string }; Querystring: { provider: string } }>(
+    '/:id/social-credentials',
+    auth,
+    async (request, reply) => {
+      const { provider } = request.query as { provider?: string };
+      const data: Record<string, null> = {};
+      if (!provider || provider === 'meta') {
+        data['metaAppIdEnc'] = null;
+        data['metaAppSecretEnc'] = null;
+      }
+      if (!provider || provider === 'tiktok') {
+        data['tiktokClientKeyEnc'] = null;
+        data['tiktokClientSecretEnc'] = null;
+      }
+      await app.prisma.projectSocialCredentials.upsert({
+        where: { projectId: request.params.id },
+        update: data,
+        create: { projectId: request.params.id },
+      });
+      return reply.send({ success: true });
+    }
+  );
 };
 
 export default projectRoutes;
